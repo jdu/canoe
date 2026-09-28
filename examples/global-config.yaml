@@ -1,0 +1,20 @@
+# Coordinator-level global config — distinct from a compiled pipeline
+# YAML (`--config`): operator/deployment-scoped settings that need to
+# stay consistent across every pipeline one coordinator runs. Loaded via
+# `canoe-coordinator --global-config examples/global-config.yaml`
+# (or the CANOE_GLOBAL_CONFIG env var) — entirely optional; omitting the
+# flag leaves every setting below at its "off" default. See
+# `canoe_config::GlobalConfig` and README.md's "Spark event logging".
+#
+# canoe only *configures* spark.eventLog.* + the S3A credentials Spark's
+# own connector needs on every Spark driver (batch and streaming alike) —
+# running/pointing a Spark History Server at base_path below is left
+# entirely to you; canoe does not deploy or manage one.
+spark:
+  event_log:
+    enabled: true
+    # `s3a://`, not canoe's usual `s3://` convention elsewhere in this
+    # repo's examples — Spark's bundled Hadoop S3 connector registers the
+    # `s3a` scheme, not `s3`. See `canoe_config::EventLogConfig::base_path`'s
+    # docs.
+    base_path: s3a://canoe-lake/_spark-events

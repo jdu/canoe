@@ -1,0 +1,114 @@
+# S3-compatible object store for local dev — stands in for real S3.
+# `emptyDir` storage: data doesn't need to survive `scripts/kind-down.sh`.
+# Static dev credentials only (minioadmin/minioadmin) — see README.md's
+# "Local dev stack" for how these get forwarded to the coordinator and,
+# via `crates/canoe-k8s/src/s3_env.rs`, to every worker pod/Job it
+# creates.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: canoe-system
+  labels:
+    app: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              value: "minioadmin"
+            - name: MINIO_ROOT_PASSWORD
+              value: "minioadmin"
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+# In-cluster address: minio.canoe-system.svc.cluster.local:9000.
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: canoe-system
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+---
+# Host addresses (via kind's extraPortMappings): localhost:9000 (API),
+# localhost:9001 (console — open in a browser to browse buckets).
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-external
+  namespace: canoe-system
+spec:
+  type: NodePort
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+      nodePort: 30900
+    - name: console
+      port: 9001
+      targetPort: console
+      nodePort: 30901
+---
+# One-shot bucket creation for the buckets the smoke-test pipeline and
+# `topics { archive { ... } }` examples reference — `canoe-lake` (step/sink
+# output) and `canoe-archive` (topic archival). Runs `mc` against MinIO's
+# in-cluster address; `kubectl wait --for=condition=complete` in
+# scripts/kind-up.sh blocks on this before declaring the stack ready.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init-buckets
+  namespace: canoe-system
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mc alias set local http://minio.canoe-system.svc.cluster.local:9000 minioadmin minioadmin &&
+              mc mb -p local/canoe-lake &&
+              mc mb -p local/canoe-archive

@@ -1,0 +1,22 @@
+[package]
+name = "canoe-k8s"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kube.workspace = true
+k8s-openapi.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+canoe-config = { path = "../canoe-config" }
+canoe-kafka = { path = "../canoe-kafka" }
+canoe-sink = { path = "../canoe-sink" }
+object_store.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+bytes.workspace = true

@@ -1,0 +1,21 @@
+# Single-node kind cluster (the control-plane node doubles as the only
+# worker — kind's default for one node) for local canoe development. See
+# README.md's "Local dev stack" and scripts/kind-up.sh.
+#
+# extraPortMappings forwards fixed host ports to the NodePort Services
+# defined in kafka.yaml/minio.yaml, so the host-run coordinator
+# (scripts/run-coordinator.sh — see README.md for why it runs on the
+# host rather than in-cluster) can reach them at plain `localhost:<port>`
+# without a separate `kubectl port-forward` process to keep alive.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: canoe
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30092 # Kafka NodePort (kafka.yaml)
+        hostPort: 9092
+      - containerPort: 30900 # MinIO API NodePort (minio.yaml)
+        hostPort: 9000
+      - containerPort: 30901 # MinIO console NodePort (minio.yaml)
+        hostPort: 9001

@@ -1,0 +1,11 @@
+# `deploy/k8s/namespace.yaml` only creates `canoe-workers` (the
+# namespace step/adapter pods run in) — `canoe-system` (where the
+# coordinator's own ServiceAccount and, here, Kafka/MinIO live) has
+# apparently always been created out-of-band in real EKS environments
+# (Terraform, a separate bootstrap step) rather than by anything checked
+# into this repo. The local kind stack needs it to actually exist, so it
+# gets created here rather than by editing the existing EKS-targeted file.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: canoe-system

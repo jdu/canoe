@@ -1,0 +1,11 @@
+[package]
+name = "canoe-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+anyhow.workspace = true
+cron.workspace = true

@@ -1,0 +1,8 @@
+# Namespace all canoe workloads (coordinator, worker Deployments, spark
+# launcher/driver/executor pods) run in. Must be matched by an EKS Fargate
+# profile (see fargate-profile.md) so pods land on Fargate instead of
+# requiring a managed node group.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: canoe-workers

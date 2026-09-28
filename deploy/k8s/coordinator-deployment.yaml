@@ -1,0 +1,88 @@
+# The coordinator itself: one replica on regular EKS compute (not
+# Fargate — it needs to run continuously as the control loop, and staying
+# off Fargate avoids the cold-start latency Fargate pods have). Not scaled
+# by itself; it's a singleton control plane, not one of the workers it manages.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canoe-coordinator
+  namespace: canoe-system
+  labels:
+    app: canoe-coordinator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: canoe-coordinator
+  template:
+    metadata:
+      labels:
+        app: canoe-coordinator
+    spec:
+      serviceAccountName: canoe-coordinator
+      containers:
+        - name: coordinator
+          image: canoe/coordinator:latest
+          args:
+            - --config=/etc/canoe/pipeline.yaml
+          env:
+            - name: CANOE_KAFKA_BOOTSTRAP
+              value: "b-1.mycluster.kafka.us-east-1.amazonaws.com:9092"
+            - name: CANOE_NAMESPACE
+              value: "canoe-workers"
+            - name: CANOE_WORKER_IMAGE
+              value: "canoe/python-worker:latest"
+            - name: CANOE_UV_WORKER_IMAGE
+              value: "canoe/uv-step-worker:latest"
+            - name: CANOE_K8S_API_SERVER
+              value: "https://ABCDEF0123456789.gr7.us-east-1.eks.amazonaws.com"
+            - name: CANOE_SPARK_SERVICE_ACCOUNT
+              value: "canoe-spark"
+            - name: CANOE_ADAPTER_RUNNER_IMAGE
+              value: "canoe/adapter-runner:latest"
+            - name: CANOE_METRICS_ADDR
+              value: "0.0.0.0:9095"
+            # The coordinator's own address as reachable from inside the
+            # cluster — the canoe-coordinator-metrics Service below, not
+            # CANOE_METRICS_ADDR (what this pod binds to). Every task
+            # (step worker pods, adapter Jobs) gets this as its own
+            # CANOE_METRICS_URL and pushes here — see "Metrics" in README.md.
+            - name: CANOE_METRICS_URL
+              value: "http://canoe-coordinator-metrics.canoe-system.svc.cluster.local:9095/metrics/report"
+          ports:
+            - name: metrics
+              containerPort: 9095
+          volumeMounts:
+            - name: pipeline-config
+              mountPath: /etc/canoe
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: pipeline-config
+          configMap:
+            name: canoe-pipeline-config
+---
+# Fronts the coordinator's metrics port so tasks running anywhere in the
+# canoe-workers namespace (a different namespace from the coordinator's
+# own canoe-system) can reach CANOE_METRICS_URL by stable DNS name rather
+# than a pod IP that changes on every coordinator restart. Prometheus
+# scrapes the same Service (its own GET /metrics, not a task's push).
+apiVersion: v1
+kind: Service
+metadata:
+  name: canoe-coordinator-metrics
+  namespace: canoe-system
+  labels:
+    app: canoe-coordinator
+spec:
+  selector:
+    app: canoe-coordinator
+  ports:
+    - name: metrics
+      port: 9095
+      targetPort: metrics

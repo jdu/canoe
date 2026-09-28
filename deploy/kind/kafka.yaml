@@ -1,0 +1,113 @@
+# Single-broker Kafka in KRaft (combined broker+controller) mode — no
+# ZooKeeper — using the official `apache/kafka` image. Good enough for
+# local dev/test only: one broker, no replication, ephemeral storage.
+#
+# Two listeners: PLAINTEXT (port 9092) is what in-cluster pods use via
+# the ClusterIP Service's DNS name; EXTERNAL (port 9094, exposed via the
+# NodePort Service below) is what the host-run coordinator
+# (scripts/run-coordinator.sh) uses. Kafka's own metadata protocol means
+# a client's *first* connection can go anywhere, but every connection
+# after that follows the listener's `advertised.listeners` address, which
+# is why EXTERNAL is advertised as `localhost:9092` — that's the address
+# kind's `extraPortMappings` (deploy/kind/kind-config.yaml) makes valid
+# from the host.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+  namespace: canoe-system
+  labels:
+    app: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: apache/kafka:3.7.1
+          env:
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://kafka.canoe-system.svc.cluster.local:9092,EXTERNAL://localhost:9092"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@localhost:9093"
+            # A throwaway single-node dev cluster generates its own
+            # cluster ID on first boot if this is unset in newer
+            # `apache/kafka` image versions; pinned explicitly here for
+            # a deterministic, reproducible `kind-up.sh`/`kind-down.sh`
+            # cycle regardless of image-version auto-generation behavior.
+            - name: CLUSTER_ID
+              value: "MkU3OEVBQ1RUSk9WQUJDQGRl"
+            # Dev convenience only — a real deployment manages topics
+            # explicitly (crates/canoe-kafka/src/admin.rs); auto-create
+            # means the local smoke pipeline's topics don't need to be
+            # pre-provisioned by hand.
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+          ports:
+            - name: plaintext
+              containerPort: 9092
+            - name: controller
+              containerPort: 9093
+            - name: external
+              containerPort: 9094
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+# In-cluster address: kafka.canoe-system.svc.cluster.local:9092.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: canoe-system
+spec:
+  selector:
+    app: kafka
+  ports:
+    - name: plaintext
+      port: 9092
+      targetPort: plaintext
+---
+# Host address (via kind's extraPortMappings): localhost:9092.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-external
+  namespace: canoe-system
+spec:
+  type: NodePort
+  selector:
+    app: kafka
+  ports:
+    - name: external
+      port: 9094
+      targetPort: external
+      nodePort: 30092

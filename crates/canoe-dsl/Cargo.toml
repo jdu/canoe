@@ -1,0 +1,12 @@
+[package]
+name = "canoe-dsl"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hcl-rs.workspace = true
+anyhow.workspace = true
+humantime.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+canoe-config = { path = "../canoe-config" }

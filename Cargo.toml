@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/canoe-config",
+    "crates/canoe-kafka",
+    "crates/canoe-sink",
+    "crates/canoe-k8s",
+    "crates/canoe-spark",
+    "crates/canoe-coordinator",
+    "crates/canoe-dsl",
+    "crates/canoe-dslc",
+    "crates/canoe-tui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait = "0.1"
+rdkafka = { version = "0.36", features = ["cmake-build", "tokio"] }
+kube = { version = "0.95", features = ["runtime", "derive", "client"] }
+k8s-openapi = { version = "0.23", features = ["v1_29"] }
+arrow = "53"
+parquet = { version = "53", features = ["async"] }
+object_store = { version = "0.11", features = ["aws"] }
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures = "0.3"
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+hcl-rs = "0.19"
+cron = "0.17"
+humantime = "2"
+ulid = "3"
+axum = "0.8"
+ratatui = "0.29"
+crossterm = "0.28"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+aes-gcm = "0.10"
+base64 = "0.22"

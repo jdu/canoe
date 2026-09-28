@@ -1,0 +1,6 @@
+{
+  "cc": "credit_card",
+  "dc": "debit_card",
+  "ach": "bank_transfer",
+  "wallet": "digital_wallet"
+}

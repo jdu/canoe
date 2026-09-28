@@ -1,0 +1,19 @@
+# Adjacent to customer-snapshot.canoe.hcl, referenced by its
+# "land_customers" sink's `metadata = "..."` attribute. Read and embedded
+# by canoe-dslc at compile time (never re-read at runtime) into every
+# flush's schema.avsc as a `canoe.metadata` custom property per field —
+# see "Column metadata at sink points" in README.md.
+#
+# Column names here don't have to be exhaustive, and any key beyond
+# label/description/sensitivity/classification is passed through as-is
+# (an open map, not a fixed schema) so this file can carry whatever a
+# downstream catalog tool wants without canoe needing to know about it.
+id:
+  label: "Customer ID"
+  description: "Unique identifier for the customer, renamed from the source system's cust_id"
+
+email:
+  label: "Email Address"
+  description: "Customer's email on file"
+  sensitivity: "restricted"
+  classification: ["pii", "contact"]

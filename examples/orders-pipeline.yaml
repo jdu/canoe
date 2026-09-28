@@ -1,0 +1,52 @@
+# Example chain: validate (Python) -> enrich (Spark SQL) -> land in the
+# datalake as partitioned Parquet.
+chains:
+  - name: orders
+    source_topic: orders.raw
+    steps:
+      - type: python
+        name: validate
+        input_topic: orders.raw
+        output_topic: orders.validated
+        entrypoint: steps.validate.run
+        code:
+          kind: s3
+          bucket: canoe-steps
+          key: orders/validate.py
+        scaling:
+          min_replicas: 2
+          max_replicas: 20
+          target_lag_per_replica: 5000
+          cooldown_secs: 60
+        resources:
+          cpu_request: "250m"
+          mem_request: "256Mi"
+          cpu_limit: "1"
+          mem_limit: "512Mi"
+
+      - type: spark_sql
+        name: enrich
+        input_topic: orders.validated
+        output_topic: orders.enriched
+        sql: >
+          SELECT *,
+                 current_timestamp() AS processed_at,
+                 date_format(current_timestamp(), 'yyyy-MM-dd') AS processed_date
+          FROM input
+        spark:
+          image: canoe/spark-runner:latest
+          executor_instances: 3
+          executor_cores: 2
+          executor_memory: 4g
+          driver_memory: 2g
+
+      - type: sink
+        name: land
+        input_topic: orders.enriched
+        sink:
+          format: parquet
+          base_path: s3://canoe-lake
+          dataset_id: orders
+          partition_by: ["processed_date"]
+          batch_size: 10000
+          flush_interval_secs: 30

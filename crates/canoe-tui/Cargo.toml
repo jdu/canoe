@@ -1,0 +1,21 @@
+[package]
+name = "canoe-tui"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "canoe-tui"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+reqwest.workspace = true
+canoe-dsl = { path = "../canoe-dsl" }
+canoe-config = { path = "../canoe-config" }

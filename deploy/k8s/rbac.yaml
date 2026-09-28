@@ -1,0 +1,112 @@
+# RBAC for the coordinator's own ServiceAccount: it needs to create/
+# delete plain Pods directly for the Python/uv step worker "quorum"
+# (crates/canoe-k8s/src/pod_manager.rs — deliberately not a Deployment;
+# see README.md's "Step pods, not Deployments"), create/patch Deployments
+# for the Spark launcher pod only, and create Jobs (one per adapter run
+# or task — see crates/canoe-k8s/src/adapter_job.rs) in the
+# canoe-workers namespace. Runs in a separate control-plane namespace so
+# it isn't itself scheduled onto Fargate as a step worker would be.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canoe-coordinator
+  namespace: canoe-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: canoe-coordinator
+  namespace: canoe-workers
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    # get/list/watch for reading step pod state (autoscaler reconcile);
+    # create/delete for scaling the pod set and pruning failed pods that
+    # (unlike a Deployment's ReplicaSet) nothing else cleans up
+    # automatically — see pod_manager.rs.
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["secrets-store.csi.x-k8s.io"]
+    resources: ["secretproviderclasses"]
+    # Provisions the SecretProviderClass a pod/Job's `secrets = [...]`
+    # declaration needs, via server-side apply (create+patch, idempotent
+    # across re-applies) — see crates/canoe-k8s/src/secrets.rs. Requires
+    # the Secrets Store CSI Driver's CRD already installed on the cluster;
+    # canoe does not install the driver itself.
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: canoe-coordinator
+  namespace: canoe-workers
+subjects:
+  - kind: ServiceAccount
+    name: canoe-coordinator
+    namespace: canoe-system
+roleRef:
+  kind: Role
+  name: canoe-coordinator
+  apiGroup: rbac.authorization.k8s.io
+---
+# Spark driver pods create/watch executor pods in cluster mode, so their
+# service account needs its own namespace-scoped permissions.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canoe-spark
+  namespace: canoe-workers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: canoe-spark-driver
+  namespace: canoe-workers
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: canoe-spark-driver
+  namespace: canoe-workers
+subjects:
+  - kind: ServiceAccount
+    name: canoe-spark
+    namespace: canoe-workers
+roleRef:
+  kind: Role
+  name: canoe-spark-driver
+  apiGroup: rbac.authorization.k8s.io
+---
+# ServiceAccount every python/uv step pod or adapter/task Job that
+# declares `secrets = [...]` runs under (see crates/canoe-k8s/src/secrets.rs),
+# so the Secrets Store CSI Driver's AWS provider (ASCP) can fetch the
+# named Secrets Manager entries on its behalf. No Role/RoleBinding needed
+# here — this ServiceAccount needs no K8s API permissions of its own; the
+# CSI driver's node plugin does the actual AWS calls, authenticated via
+# the IRSA role bound below. Fill in the role ARN, and grant that role
+# `secretsmanager:GetSecretValue` on whichever secret ARNs your pipelines
+# actually declare — out-of-band, same as every other IRSA role in this
+# file. A pod/Job with no `secrets` declared never references this
+# ServiceAccount at all.
+#
+# Spark steps deliberately do NOT use this ServiceAccount — see
+# crates/canoe-spark/src/lib.rs's `spark_submit_args` docs for why
+# (a Spark driver already needs `canoe-spark`'s own pod-management
+# permissions; grant its IAM role Secrets Manager access instead if any
+# Spark step declares `secrets`).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: canoe-secrets
+  namespace: canoe-workers
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<ACCOUNT_ID>:role/<FILL-IN-canoe-secrets-role>"
